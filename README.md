@@ -1,5 +1,7 @@
 # Playwright CDP Compat
 
+[简体中文](README.zh-CN.md)
+
 `connectOverCDP()` tells you a browser session attached. It does not tell you whether the operations your agent or test suite depends on will work.
 
 Playwright CDP Compat runs the same small, local fixture probes against one or more Chromium-based CDP endpoints and turns the observed results into a terminal summary, JSON, and a self-contained HTML report. It is a focused capability snapshot—not a compatibility certificate.

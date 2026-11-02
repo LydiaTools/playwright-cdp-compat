@@ -1,5 +1,7 @@
 # Playwright CDP Compat
 
+[English](README.md)
+
 `connectOverCDP()` 成功，只说明 Playwright 连上了浏览器；它没有告诉你，Agent 或测试真正依赖的操作是否可用。
 
 Playwright CDP Compat 用同一组本地夹具，检查一个或多个 Chromium 系 CDP 端点，并生成终端摘要、JSON 和可独立打开的 HTML 报告。它是一份有限范围的能力快照，不是兼容性认证。
