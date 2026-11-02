@@ -1,0 +1,5 @@
+node_modules/
+reports/
+cdp-compat-report.json
+cdp-compat-report.html
+.DS_Store

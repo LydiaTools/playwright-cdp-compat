@@ -1,0 +1,19 @@
+{
+  "name": "playwright-cdp-compat",
+  "version": "0.1.0",
+  "description": "A small, fixture-based capability probe for Playwright over CDP browsers.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "cdp-compat": "src/cli.mjs"
+  },
+  "scripts": {
+    "start": "node src/cli.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "1.64.1"
+  },
+  "license": "MIT"
+}
