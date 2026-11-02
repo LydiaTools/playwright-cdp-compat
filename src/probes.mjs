@@ -34,7 +34,7 @@ function cleanError(error, endpoint) {
   return message
     .replace(/\b(?:https?|wss?):\/\/[^\s"'<>]+/gi, '[URL redacted]')
     .replace(/\bBearer\s+[^\s"'<>]+/gi, 'Bearer [redacted]')
-    .replace(/([?&](?:token|key|secret|password|auth)=)[^&\s"'<>]+/gi, '$1[redacted]')
+    .replace(/\b((?:token|api[-_ ]?key|secret|password|authorization)\s*[:=]\s*)[^\s,;"'<>]+/gi, '$1[redacted]')
     .replace(/(?:\/Users\/|\/home\/)[^\s"'<>]+/g, '[local path redacted]')
     .replace(/[A-Z]:\\Users\\[^\s"'<>]+/g, '[local path redacted]')
     .replace(/\s+/g, ' ')
