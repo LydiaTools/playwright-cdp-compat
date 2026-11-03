@@ -14,7 +14,7 @@ Playwright CDP Compat runs the same small, local fixture probes against one or m
 - Accessible role and label locators, input fill, and `selectOption()`
 - `frameLocator()` interaction with a `srcdoc` iframe
 - Cookie separation between temporary browser contexts
-- IANA timezone and dark color-scheme emulation
+- IANA timezone override, `prefers-color-scheme`, and `prefers-reduced-motion` emulation
 - Playwright request routing to a reserved `.invalid` URL
 
 Each operation is reported as `PASS`, `FAIL`, `UNSUPPORTED`, or `NOT RUN`, with elapsed time and a short observation. The fixture uses no production pages, logins, or external sites. Endpoint URLs and credentials are omitted from reports and redacted from captured errors.
@@ -48,6 +48,18 @@ node src/cli.mjs \
 
 The process connects to the endpoint and disconnects after the probes. Use a disposable browser profile when starting a local browser for this purpose. For remote endpoints with credentials, pass them through environment variables; do not paste tokens into a committed file.
 
+For providers that require CDP connection headers, read each value from an environment variable and scope it to the target that needs it:
+
+```sh
+export CDP_AUTH_TOKEN="replace-with-your-token"
+node src/cli.mjs \
+  --target remote=@env:CDP_URL \
+  --header remote:Authorization=@env:CDP_AUTH_TOKEN \
+  --html reports/remote.html
+```
+
+Header values are omitted from reports and redacted from captured errors.
+
 ## Read results carefully
 
 - `PASS` means the named operation completed against this fixture in this run.
@@ -62,6 +74,7 @@ A pass does not establish general Playwright Test compatibility, reliability und
 ```text
 --target name=endpoint       Repeatable; name uses letters, numbers, dot, _ or -
 --target name=@env:VARIABLE  Read a CDP endpoint from an environment variable
+--header target:name=@env:VARIABLE  Add a header to one target from an environment variable; repeatable
 --json file                  Write a JSON report
 --html file                  Write a self-contained HTML report
 --timeout-ms number          Per-operation timeout, 500–120000 ms (default 8000)

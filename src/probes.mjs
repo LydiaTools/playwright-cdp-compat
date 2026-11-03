@@ -5,7 +5,9 @@ export const PROBE_CATALOG = [
   { id: 'locators-forms', label: 'Role/label locators and selectOption', group: 'Locators & forms' },
   { id: 'iframe-locator', label: 'frameLocator interaction', group: 'Frames' },
   { id: 'context-cookie-isolation', label: 'Browser-context cookie isolation', group: 'Contexts' },
-  { id: 'timezone-media', label: 'Timezone and media emulation', group: 'Emulation' },
+  { id: 'timezone', label: 'IANA timezone override', group: 'Emulation' },
+  { id: 'color-scheme', label: 'prefers-color-scheme emulation', group: 'Emulation' },
+  { id: 'reduced-motion', label: 'prefers-reduced-motion emulation', group: 'Emulation' },
   { id: 'network-route', label: 'Playwright request routing', group: 'Networking' },
 ];
 
@@ -28,9 +30,12 @@ const FORM_FIXTURE = `<!doctype html>
   });
 </script></html>`;
 
-function cleanError(error, endpoint) {
+function cleanError(error, endpoint, sensitiveValues = []) {
   let message = error instanceof Error ? error.message : String(error);
   if (endpoint) message = message.split(endpoint).join('[CDP endpoint redacted]');
+  for (const value of sensitiveValues) {
+    if (value) message = message.split(value).join('[header value redacted]');
+  }
   return message
     .replace(/\b(?:https?|wss?):\/\/[^\s"'<>]+/gi, '[URL redacted]')
     .replace(/\bBearer\s+[^\s"'<>]+/gi, 'Bearer [redacted]')
@@ -66,7 +71,7 @@ async function recordProbe(target, id, label, run) {
       group: PROBE_GROUPS[id],
       status: classifyError(error),
       durationMs: Math.round(performance.now() - started),
-      detail: cleanError(error, target.endpoint),
+      detail: cleanError(error, target.endpoint, Object.values(target.headers ?? {})),
     };
   }
 }
@@ -144,23 +149,55 @@ async function runContextIsolation(target, browser) {
   });
 }
 
-async function runEmulation(target, browser, timeoutMs) {
-  return recordProbe(target, 'timezone-media', 'Timezone and media emulation', async () => {
+async function runTimezone(target, browser, timeoutMs) {
+  return recordProbe(target, 'timezone', 'IANA timezone override', async () => {
     let context;
     try {
       context = await browser.newContext({ timezoneId: 'America/Los_Angeles' });
       const observed = await withPage(context, timeoutMs, async page => {
         await page.setContent('<main>Local emulation fixture</main>', { timeout: timeoutMs });
-        await page.emulateMedia({ colorScheme: 'dark' });
-        return page.evaluate(() => ({
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          dark: matchMedia('(prefers-color-scheme: dark)').matches,
-        }));
+        return page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
       });
-      if (observed.timezone !== 'America/Los_Angeles' || observed.dark !== true) {
-        throw new Error(`Observed timezone=${observed.timezone}; dark=${observed.dark}.`);
+      if (observed !== 'America/Los_Angeles') {
+        throw new Error(`Observed timezone=${observed}.`);
       }
-      return 'Resolved the configured IANA timezone and dark color-scheme media query.';
+      return 'The page resolved the configured America/Los_Angeles timezone.';
+    } finally {
+      await context?.close().catch(() => {});
+    }
+  });
+}
+
+async function runColorScheme(target, browser, timeoutMs) {
+  return recordProbe(target, 'color-scheme', 'prefers-color-scheme emulation', async () => {
+    let context;
+    try {
+      context = await browser.newContext();
+      const observed = await withPage(context, timeoutMs, async page => {
+        await page.setContent('<main>Local emulation fixture</main>', { timeout: timeoutMs });
+        await page.emulateMedia({ colorScheme: 'dark' });
+        return page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches);
+      });
+      if (observed !== true) throw new Error(`The dark media query returned ${observed}.`);
+      return 'The page matched prefers-color-scheme: dark after Playwright emulation.';
+    } finally {
+      await context?.close().catch(() => {});
+    }
+  });
+}
+
+async function runReducedMotion(target, browser, timeoutMs) {
+  return recordProbe(target, 'reduced-motion', 'prefers-reduced-motion emulation', async () => {
+    let context;
+    try {
+      context = await browser.newContext();
+      const observed = await withPage(context, timeoutMs, async page => {
+        await page.setContent('<main>Local emulation fixture</main>', { timeout: timeoutMs });
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        return page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
+      });
+      if (observed !== true) throw new Error(`The reduced-motion media query returned ${observed}.`);
+      return 'The page matched prefers-reduced-motion: reduce after Playwright emulation.';
     } finally {
       await context?.close().catch(() => {});
     }
@@ -208,7 +245,10 @@ export async function inspectTarget(target, timeoutMs) {
   const checks = [];
   let browserVersion = null;
   try {
-    browser = await chromium.connectOverCDP(target.endpoint, { timeout: timeoutMs });
+    browser = await chromium.connectOverCDP(target.endpoint, {
+      timeout: timeoutMs,
+      headers: target.headers,
+    });
     browserVersion = await browser.version().catch(() => null);
     checks.push({
       id: 'connection',
@@ -226,7 +266,9 @@ export async function inspectTarget(target, timeoutMs) {
       checks.push(await runLocatorsAndForms(target, defaultContext, timeoutMs));
       checks.push(await runFrame(target, defaultContext, timeoutMs));
       checks.push(await runContextIsolation(target, browser));
-      checks.push(await runEmulation(target, browser, timeoutMs));
+      checks.push(await runTimezone(target, browser, timeoutMs));
+      checks.push(await runColorScheme(target, browser, timeoutMs));
+      checks.push(await runReducedMotion(target, browser, timeoutMs));
       checks.push(await runNetworkRoute(target, defaultContext, timeoutMs));
     }
   } catch (error) {
@@ -237,7 +279,7 @@ export async function inspectTarget(target, timeoutMs) {
         group: 'Connection',
         status: classifyError(error),
         durationMs: Math.round(performance.now() - started),
-        detail: cleanError(error, target.endpoint),
+        detail: cleanError(error, target.endpoint, Object.values(target.headers ?? {})),
       });
       checks.push(...notRunChecks('The CDP connection did not complete.'));
     } else {

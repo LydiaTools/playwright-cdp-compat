@@ -15,6 +15,7 @@ Usage:
 Options:
   --target <name>=<endpoint>  Add a Chromium CDP target; repeatable
   --target <name>=@env:NAME    Read the endpoint from an environment variable
+  --header <target>:<name>=@env:NAME  Add a CDP header to one target from an environment variable
   --json <file>               Write a machine-readable JSON report
   --html <file>               Write a self-contained HTML report
   --timeout-ms <number>       Per-operation timeout (default: ${DEFAULT_TIMEOUT_MS})
@@ -27,17 +28,18 @@ the @env form so the URL does not appear in shell history or process arguments.`
 }
 
 function parseArgs(argv) {
-  const options = { targets: [], jsonPath: null, htmlPath: null, timeoutMs: DEFAULT_TIMEOUT_MS, failOnUnsupported: false };
+  const options = { targets: [], headerSpecs: [], jsonPath: null, htmlPath: null, timeoutMs: DEFAULT_TIMEOUT_MS, failOnUnsupported: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--help' || arg === '-h') return { ...options, help: true };
     if (arg === '--version') return { ...options, version: true };
     if (arg === '--fail-on-unsupported') { options.failOnUnsupported = true; continue; }
-    if (['--target', '--json', '--html', '--timeout-ms'].includes(arg)) {
+    if (['--target', '--header', '--json', '--html', '--timeout-ms'].includes(arg)) {
       const value = argv[index + 1];
       if (!value || value.startsWith('--')) throw new Error(`Missing value for ${arg}.`);
       index += 1;
       if (arg === '--target') options.targets.push(value);
+      else if (arg === '--header') options.headerSpecs.push(value);
       else if (arg === '--json') options.jsonPath = value;
       else if (arg === '--html') options.htmlPath = value;
       else {
@@ -54,6 +56,35 @@ function parseArgs(argv) {
   if (options.targets.length === 0 && !options.help && !options.version) throw new Error('Add at least one --target.');
   if (options.jsonPath && options.htmlPath && options.jsonPath === options.htmlPath) throw new Error('JSON and HTML output paths must be different.');
   return options;
+}
+
+function parseHeaders(specs, targets) {
+  const targetNames = new Set(targets.map(target => target.name));
+  const headersByTarget = new Map(targets.map(target => [target.name, {}]));
+  const seenNames = new Set();
+  for (const spec of specs) {
+    const separator = spec.indexOf('=');
+    if (separator < 1 || separator === spec.length - 1) throw new Error('Each header must use target:name=@env:VARIABLE.');
+    const assignment = spec.slice(0, separator);
+    const targetSeparator = assignment.indexOf(':');
+    if (targetSeparator < 1 || targetSeparator === assignment.length - 1) throw new Error('Each header must name its target and header, such as remote:Authorization=@env:TOKEN.');
+    const targetName = assignment.slice(0, targetSeparator);
+    const name = assignment.slice(targetSeparator + 1);
+    if (!targetNames.has(targetName)) throw new Error(`Connection header refers to unknown target: ${targetName}.`);
+    const reference = spec.slice(separator + 1);
+    if (!/^[A-Za-z0-9-]+$/.test(name)) throw new Error('Header names may contain only letters, numbers, and hyphens.');
+    const normalizedName = `${targetName}:${name.toLowerCase()}`;
+    if (seenNames.has(normalizedName)) throw new Error(`Duplicate connection header: ${name}.`);
+    seenNames.add(normalizedName);
+    if (!reference.startsWith('@env:')) throw new Error('Header values must be read from @env:VARIABLE references.');
+    const variableName = reference.slice(5);
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(variableName)) throw new Error('Invalid environment variable reference for a header.');
+    const value = process.env[variableName];
+    if (!value) throw new Error(`Environment variable ${variableName} is missing or empty.`);
+    if (/[\r\n]/.test(value)) throw new Error(`Environment variable ${variableName} contains an invalid header value.`);
+    headersByTarget.get(targetName)[name] = value;
+  }
+  return headersByTarget;
 }
 
 function parseTargets(specs) {
@@ -88,6 +119,8 @@ async function main() {
     if (options.help) { console.log(usage()); return 0; }
     if (options.version) { console.log(packageJson.version); return 0; }
     const targets = parseTargets(options.targets);
+    const headersByTarget = parseHeaders(options.headerSpecs, targets);
+    for (const target of targets) target.headers = headersByTarget.get(target.name);
     const report = {
       schemaVersion: 1,
       tool: { name: 'playwright-cdp-compat', version: packageJson.version },

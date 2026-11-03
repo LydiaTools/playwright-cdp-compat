@@ -14,7 +14,7 @@ Playwright CDP Compat 用同一组本地夹具，检查一个或多个 Chromium 
 - 可访问角色与标签定位、输入框填写、`selectOption()`
 - 在 `srcdoc` iframe 中使用 `frameLocator()` 操作
 - 临时浏览器上下文之间的 Cookie 隔离
-- IANA 时区与深色配色模拟
+- IANA 时区覆盖、`prefers-color-scheme` 与 `prefers-reduced-motion` 模拟
 - 将请求路由到保留的 `.invalid` 域名
 
 每项结果标为 `PASS`、`FAIL`、`UNSUPPORTED` 或 `NOT RUN`，附耗时和简短观察。夹具不打开生产网页、不登录、不请求外部网站。报告会省略端点地址，并清理捕获错误中的 URL 与凭据。
@@ -48,6 +48,18 @@ node src/cli.mjs \
 
 工具连接端点，完成探测后断开连接。为此启动本地浏览器时，建议使用一次性浏览器配置目录。远程端点含凭据时，用环境变量传入；不要把令牌写进仓库文件。
 
+CDP 服务商要求连接请求携带请求头时，可通过环境变量传入，并绑定到需要它的目标：
+
+```sh
+export CDP_AUTH_TOKEN="替换为你的令牌"
+node src/cli.mjs \
+  --target remote=@env:CDP_URL \
+  --header remote:Authorization=@env:CDP_AUTH_TOKEN \
+  --html reports/remote.html
+```
+
+请求头值不会写入报告，并会从捕获的错误中清理。
+
 ## 如何看结果
 
 - `PASS`：本次运行中，该操作按夹具预期完成。
@@ -62,6 +74,7 @@ node src/cli.mjs \
 ```text
 --target name=endpoint       可重复；名称可用字母、数字、点、_ 或 -
 --target name=@env:VARIABLE  从环境变量读取 CDP 端点
+--header target:name=@env:VARIABLE  从环境变量读取请求头并绑定目标；可重复
 --json file                  写出 JSON 报告
 --html file                  写出单文件 HTML 报告
 --timeout-ms number          单项超时，500–120000 毫秒，默认 8000
